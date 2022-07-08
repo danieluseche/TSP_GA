@@ -1,3 +1,5 @@
+from random import randint
+
 def to_index_notation(p):
     p_mod = []
     for i in range(len(p)):
@@ -59,10 +61,31 @@ def cycle_crossover(p1, p2):
         print(child)
     return to_path_notation(child)
 
+def slice_parent(p):
+    init = 0
+    end = 0
+    while init >= end:
+        init = randint(0,len(p)-1)
+        end = randint(0,len(p)-1)
+    return p[init:end]
+
+def PMX_crossover(p1, p2):
+    child = slice_parent(p1)
+    for item in p2:
+        if item not in child:
+            child.append(item)
+
+    print(child)
+    if child[0] != 0:
+        tmp = []
+        for item in child[0:child.index(0)]:
+            child.remove(item)
+            child.append(item)
+    return child
 
 if __name__ == '__main__':
     p1 = [0, 9, 7, 12, 4, 14, 2, 11, 16, 5, 20, 8, 6, 17, 3, 10, 13, 18, 15, 1, 19]
     p2 = [0, 12, 5, 13, 11, 4, 19, 15, 14, 7, 1, 18, 2, 6, 9, 10, 20, 17, 3, 8, 16]
     
     print()
-    print(cycle_crossover(p1,p2))
+    print(PMX_crossover(p1,p2))
