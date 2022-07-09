@@ -1,24 +1,33 @@
 from random import choice, random, randint
+from math import sqrt
 import tsplib95
 import csv
 from cromosome import Cromosome
-from crosover import *
+from crossover import PMX_crossover
+from mutation import swap_mutation
 
 class Genetic:
-    def __init__(self, TSP_file, population=20, generations = 20):
-        self.generation_count = 20
+    def __init__(self, TSP_file, population = 10, generations = 10, output_file = 'output_file.csv'):
+        self.max_generations = generations
+
+        self.output_file = output_file
+        #Star with a empty file:
+        with open(output_file, 'r+') as f:
+            f.truncate()
+
         #Cargar Problema
         self.TSP = self.tsp_load(TSP_file)
-        self.population = [Cromosome([0]) for x in range(population)]
+        self.population = [None for x in range(population)]
+
         self.new_generation = []
         self.generation_sum_cost = 0
 
-        self.individual_probs = []
         self.cumulative_probs = []
 
         self.mutation_rate = 0.3
         self.crossover_rate = 0.7
-        self.best_individual = Cromosome()
+        self.best_individual = Cromosome([0,1],self.TSP)
+        self.best_individual.cost = 0
 
     def __str__(self):
         return f'\n'.join([str(individual) for individual in self.population])
@@ -26,64 +35,69 @@ class Genetic:
     def tsp_load(self, TSP_file):
         with open(TSP_file):
             return tsplib95.load(TSP_file)
+    
+    def write_costs_to_file(self):
+        with open(self.output_file, mode='a') as csv_file:
+            writer = csv.writer(csv_file, delimiter = ',')
+            writer.writerow([round(1 / individual.get_cost()) for individual in self.population])
 
     def populate(self):
-        self.population = [Cromosome([0]) for x in range(len(self.population))]
-        for individual in self.population:
+        for i in range(len(self.population)):
+            path = [0]
             opt = [x for x in range(1, self.TSP.dimension)]
-            while len(individual.path) != 21:
+            while len(path) != self.TSP.dimension:
                 num = choice(opt)
-                individual.path.append(num)
+                path.append(num)
                 opt.remove(num)
 
+            self.population[i] = Cromosome(path, self.TSP)
         self.compute_generation_cost()
 
     def populate_from_file(self, file_name):
         with open(file_name) as csv_file:
             csv_reader = csv.reader(csv_file)
             list_of_csv = list(csv_reader)
-        self.population = [Cromosome([int(item) for item in ind]) for ind in list_of_csv]
+        self.population = [Cromosome([int(item) for item in ind], self.TSP) for ind in list_of_csv]
         self.compute_generation_cost()
+
+
+    def compute_generation_cost(self):
+        self.generation_sum_cost = sum(self.population)
+
+        #Valor promedio de la generación:
+        self.generation_prom = self.generation_sum_cost / len(self.population)
+
+        #Desviacion Estandar:
+        tmp = [ (x.get_cost() - self.generation_prom)**2 for x in self.population]
+        self.standard_deviation = sqrt(sum(tmp)/len(self.population))
+
+        #Organizar la población:
+        self.population = sorted(self.population)
+        self.find_best_individual()        
 
     def find_best_individual(self):
         if self.population[-1] >= self.best_individual:
             self.best_individual = self.population[-1]
 
-    def compute_cost(self, individual):
-            cost = 0
-            for i in range(self.TSP.dimension - 1):
-                cost += self.TSP.get_weight(individual.path[i], individual.path[i+1])
-            cost += self.TSP.get_weight(individual.path[-1], individual.path[0])
-            return cost
-
-    def compute_generation_cost(self):
-        self.generation_sum_cost = 0
-        for individual in self.population:
-            #Due to minimization, we must invert the cost function
-            individual.cost = 1/self.compute_cost(individual)
-            self.generation_sum_cost += individual.cost
-        
-        self.population = sorted(self.population)
-        self.find_best_individual()        
-
-
     def compute_generation_probability(self):
-        self.individual_probs = []
         self.cumulative_probs = []
 
         for individual in self.population:        
-            self.individual_probs.append(individual.cost/self.generation_sum_cost)
-            
+            individual.set_probability(individual.get_cost()/self.generation_sum_cost)
+
             if self.population.index(individual) == 0:
-                self.cumulative_probs.append(self.individual_probs[self.population.index(individual)])
+                self.cumulative_probs.append(individual.get_probability())
             else:
-                self.cumulative_probs.append(self.individual_probs[self.population.index(individual)] + self.cumulative_probs[self.population.index(individual)-1])
+                self.cumulative_probs.append(\
+                        individual.get_probability() + \
+                        self.cumulative_probs[self.population.index(individual)-1])
 
     def print_prob_table(self):
         print('  i        cost    prob     cum  N°') 
 
-        for individual, prob, cum_prob in zip(self.population, self.individual_probs, self.cumulative_probs):
-            print(f'{self.population.index(individual):3d}: {individual.cost:.4e} {prob*100:6.2f}% {cum_prob*100:6.2f}%  {round(prob*len(self.population))}')
+        for individual, cum_prob in zip(self.population, self.cumulative_probs):
+            print(f'{self.population.index(individual):3d}: {individual.cost:.4e} {individual.get_probability()*100:6.2f}% {cum_prob*100:6.2f}%  {round(individual.get_probability()*len(self.population))}')
+        print(f'  Prom: {self.generation_prom:.4e} SD: {self.standard_deviation:.4e}')
 
     def binary_search(self, num, init, end):
         if end >= init:
@@ -105,48 +119,58 @@ class Genetic:
         return self.binary_search(random(), init = 0, end = len(problem.population) - 1)
     
     def elitism(self):
-        if self.population[-1] > 5 / len(self.population):
-            self.new_generation.append(self.population[-1])
+        if self.population[-1].cost > 20 * self.standard_deviation:
+            if self.population[-1] not in self.new_generation:
+                self.new_generation.append(self.population[-1])
 
-    def swap_mutation(self,individual):
-        mutated_path = individual.path.copy()
-        n1 = randint(0, len(individual.path))
-        n2 = randint(0, len(individual.path))
-        mutated_path[n1] = individual.path[n2]
-        mutated.path[n2] = individual.path[n1]
-        return Cromosome(mutated_path)
-        
     def run(self):
-        #for generation in range(self.generation_count):
-        self.compute_generation_cost()
-        self.compute_generation_probability()  
+        #If there is no population take a random one
+        if None in self.population:
+            self.populate()
 
-        while len(self.new_generation) != len(self.population): 
-            #Selection
-            self.elitism()
+        for generation in range(self.max_generations):
+
+            #Prepare the actual population:
+            self.compute_generation_cost()
+            self.compute_generation_probability()
+            #self.print_prob_table()
             
-            #Crossover
-            if random() < self.crossover_rate:
-                p1 = 0
-                p2 = 0
-                while p1 == p2:
-                    p1 = roulette_selection()
-                    p2 = roulette_selection()
-                self.new_generation.append(cycle_crossover(self.population[p1], self.population[p2]))
+            #write to file:
+            self.write_costs_to_file()
 
-            #Mutation
-            if random() < self.mutation_rate:
-                self.new_generation.append(self.swap_mutation(), self.population[self.roulette_selection()])
+            #Fill the new generation:
+            while len(self.new_generation) != len(self.population):
+                 
+                #self.elitism()
 
-        self.population = self.new_generation.copy()
-        self.new_generation = []
+                if random() < self.crossover_rate:
+                    cross_path = []
+                    n1 = 0
+                    n2 = 0
+                    while n1 == n2:
+                        n1 = self.roulette_selection()
+                        n2 = self.roulette_selection()
+                    cross_path = PMX_crossover(self.population[n1].get_path(),self.population[n2].get_path())
+
+                    self.new_generation.append(Cromosome(cross_path, self.TSP))
+                    continue
+
+                if random() < self.mutation_rate:
+                    mutated_path = swap_mutation(self.population[self.roulette_selection()].get_path())
+                    self.new_generation.append(Cromosome(mutated_path, self.TSP))
+                    continue
+
+            self.population = self.new_generation.copy()
+            self.new_generation.clear()
+
+        return self.best_individual
 
 
 if __name__=='__main__':
-    problem = Genetic('gr21.tsp', 10)
-    
+    problem = Genetic('gr21.tsp', population = 20, generations = 20)
+    print(problem.run())
     # Random first generation
-    problem.populate()
+    # problem.populate() 
     
     # Search among generations a better solution
     # while True:
@@ -158,23 +182,42 @@ if __name__=='__main__':
     #problem.populate_from_file('population.csv')
     #print(problem)
 
-    #Asignando un valor de costo bajo
-    # problem.population[0].cost = 1/4000
-    # problem.generation_sum_cost=0
-    # for individual in problem.population:
-    #     problem.generation_sum_cost += individual.cost
-
     #GENERATIONS LOOP
     #selection
-    problem.compute_generation_probability()
-    problem.print_prob_table()
-    #trow a random number
-    
-    #Populate NEW GENERATION
-    #print(problem.roulette_selection())
-    print(problem.best_individual)
-    #recombination
+    # problem.compute_generation_probability()
+    # problem.print_prob_table()
 
-    #Mutation
+
+#***************************FIND BEST*****************************************************
+    # print('best individual:')
+    # print(problem.best_individual)
+
+
+#***************************SELECTION*****************************************************
+    # print(problem.roulette_selection())
+
+#***************************ELITISM*******************************************************
+    # print('elitism:')
+    # problem.elitism()
+
+#***************************MUTATION*******************************************************
+    # print('before:')
+    # print(problem.best_individual.get_path())
+    # print('after:')
+    # print(swap_mutation(problem.best_individual.path))
+
+#***************************CROSSOVER*******************************************************
+    # n1 = 0
+    # n2 = 0
+    # while n1 == n2:
+    #     n1 = problem.roulette_selection()
+    #     n2 = problem.roulette_selection()
+    # print('Chosen:')
+    # print(problem.population[n1])
+    # print(problem.population[n2])
+    # print('Child:')
+    # print(PMX_crossover(problem.population[n1].get_path(),problem.population[n2].get_path()))
+
+ #*****************************************************************************************   
 
   
