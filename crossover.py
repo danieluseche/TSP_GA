@@ -70,22 +70,25 @@ def slice_parent(p):
     return p[init:end]
 
 def PMX_crossover(p1, p2):
-    child = slice_parent(p1)
-    for item in p2:
-        if item not in child:
-            child.append(item)
+    child = p1.copy()
+    sliced_parent = slice_parent(p1)
+    residue =[]
+    for item in filter(lambda x: x not in sliced_parent, p2):
+        residue.append(item)
+        child[p1.index(item)] = -1 
 
-    print(child)
-    if child[0] != 0:
-        tmp = []
-        for item in child[0:child.index(0)]:
-            child.remove(item)
-            child.append(item)
+    count = 0
+    while child.count(-1):
+        index = child.index(-1)
+        child[index] = residue[count]
+        count += 1
+
     return child
 
 if __name__ == '__main__':
     p1 = [0, 9, 7, 12, 4, 14, 2, 11, 16, 5, 20, 8, 6, 17, 3, 10, 13, 18, 15, 1, 19]
     p2 = [0, 12, 5, 13, 11, 4, 19, 15, 14, 7, 1, 18, 2, 6, 9, 10, 20, 17, 3, 8, 16]
-    
-    print()
+   
+    print(p1)
     print(PMX_crossover(p1,p2))
+    print(p2)
