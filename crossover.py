@@ -90,5 +90,5 @@ if __name__ == '__main__':
     p2 = [0, 12, 5, 13, 11, 4, 19, 15, 14, 7, 1, 18, 2, 6, 9, 10, 20, 17, 3, 8, 16]
    
     print(p1)
-    print(PMX_crossover(p1,p2))
     print(p2)
+    print(PMX_crossover(p1,p2))

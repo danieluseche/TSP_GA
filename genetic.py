@@ -2,6 +2,7 @@ from random import choice, random, randint
 from math import sqrt
 import tsplib95
 import csv
+
 from cromosome import Cromosome
 from crossover import PMX_crossover
 from mutation import swap_mutation
@@ -36,6 +37,11 @@ class Genetic:
         with open(TSP_file):
             return tsplib95.load(TSP_file)
     
+    def write_header(self):
+        with open(self.output_file, mode='a') as csv_file:
+            writer = csv.writer(csv_file, delimiter = ',')
+            writer.writerow([x for x in range(len(self.population))])
+
     def write_costs_to_file(self):
         with open(self.output_file, mode='a') as csv_file:
             writer = csv.writer(csv_file, delimiter = ',')
@@ -128,6 +134,8 @@ class Genetic:
         if None in self.population:
             self.populate()
 
+        self.write_header()
+
         for generation in range(self.max_generations):
 
             #Prepare the actual population:
@@ -142,6 +150,8 @@ class Genetic:
             while len(self.new_generation) != len(self.population):
                  
                 #self.elitism()
+                #Taking the worst child
+                child = self.population[0]
 
                 if random() < self.crossover_rate:
                     cross_path = []
@@ -152,13 +162,16 @@ class Genetic:
                         n2 = self.roulette_selection()
                     cross_path = PMX_crossover(self.population[n1].get_path(),self.population[n2].get_path())
 
-                    self.new_generation.append(Cromosome(cross_path, self.TSP))
-                    continue
+                    child = Cromosome(cross_path, self.TSP)
+                    
 
-                if random() < self.mutation_rate:
+                elif random() < self.mutation_rate:
                     mutated_path = swap_mutation(self.population[self.roulette_selection()].get_path())
-                    self.new_generation.append(Cromosome(mutated_path, self.TSP))
-                    continue
+                    child = Cromosome(mutated_path, self.TSP)
+                
+                
+                if child.get_cost() > self.generation_prom:
+                    self.new_generation.append(child)
 
             self.population = self.new_generation.copy()
             self.new_generation.clear()
@@ -168,6 +181,8 @@ class Genetic:
 
 if __name__=='__main__':
     problem = Genetic('gr21.tsp', population = 20, generations = 20)
+    #problem.populate_from_file('population.csv')
+    print(f'best solution:')
     print(problem.run())
     # Random first generation
     # problem.populate() 
